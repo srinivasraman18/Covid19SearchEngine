@@ -66,7 +66,7 @@ class SearchView(APIView):
 				current_result = {}
 				current_result['source'] = url
 				current_result['content'] = []
-				if url == 'https://www.cdc.gov/coronavirus/2019-ncov/faq.html' or 'https://www.cdc.gov/coronavirus/2019-ncov/hcp/faq.html':
+				if url == 'https://www.cdc.gov/coronavirus/2019-ncov/faq.html' or url=='https://www.cdc.gov/coronavirus/2019-ncov/hcp/faq.html':
 					page = requests.get("https://www.cdc.gov/coronavirus/2019-ncov/faq.html")
 					soup = BeautifulSoup(page.content, 'html.parser')
 					page_results= soup.find_all('div',attrs={'class': 'card bar'})
