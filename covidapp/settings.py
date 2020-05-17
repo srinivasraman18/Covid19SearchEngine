@@ -25,7 +25,7 @@ SECRET_KEY = ')lfopv796_v4(lz920zbig1p%kl&v0xdy%nf+rs=l**2@*pek_'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['covidsearchtest.herokuapp.com']
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
