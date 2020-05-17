@@ -86,6 +86,5 @@ class SearchView(APIView):
 			
 			except TypeError:
 				continue
-
 		return Response(response_json)
 
