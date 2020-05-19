@@ -124,7 +124,7 @@ def findsimilar(quest):
 		fg=contents[contents['Question']==quest.strip()]
 		new_row= pd.DataFrame([[quest,kw[:len(kw)-1]]], columns=['Question','Keywords'])
 		if fg.empty:
-			new_row.to_csv('faqs1.csv', header=None, mode='a',index=False)
+			new_row.to_csv('faqs1.csv', header=None, mode='a')
 	else:
 		keywords = kw_extractor.extract_keywords(quest)
 		kw=""
