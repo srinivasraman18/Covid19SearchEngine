@@ -83,25 +83,21 @@ def is_empty_csv(path):
 
 def similar(keywords,quest):
 	kw_extractor = yake.KeywordExtractor()
-	list=keywords.split(",")
+	list_=keywords.split(",")
 	keywords1 = kw_extractor.extract_keywords(quest)
 	klist=[]
 	for k in keywords1:
 		klist.append(k[1])
 		list1_as_set = set(klist)
-		intersection = list1_as_set.intersection(list)
+		intersection = list1_as_set.intersection(list_)
 	if len(intersection)!=0:
 		return 1
 	else:
 		return 0
 		
 def gettop3():
-	faqs = []
-	contents=pd.read_csv('faqs1.csv', index_col=0)
-	print(contents.head(3))
-	for i,j in contents.head(3):
-		faqs.append(j[0])
-	return faqs
+	contents=pd.read_csv('faqs1.csv')
+	return contents['Question'].tolist()[:3]
 
 
 def findsimilar(quest):
@@ -135,7 +131,7 @@ def findsimilar(quest):
 		for k in keywords:
 			kw=kw+k[1]+","
 			new_entry= pd.DataFrame([[quest,kw[:len(kw)-1]]], columns=['Question','Keywords'])
-			new_entry.to_csv('faqs1.csv',index=False)
+			new_entry.to_csv('faqs1.csv')
 	return similar_faqs
 
 
