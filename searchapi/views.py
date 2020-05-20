@@ -147,7 +147,10 @@ class FaqView(APIView):
 
 class SearchView(APIView):
 	def get(self,request):
-		api_key = "AIzaSyCPbc8i_1wJhQK5MyuMucgwX4XSsJch2l8"
+		#api_key = "AIzaSyCPbc8i_1wJhQK5MyuMucgwX4XSsJch2l8"
+		#search_engine_id = "016284288800975862249:mj2ausqodab"
+		api_key = "AIzaSyBUOR1z8vQaKwnS0vbS5dLK7GZUB20j99w"
+		search_engine_id = "016400685532725398485:nojhx1tdntd"
 		resource = build("customsearch", 'v1', developerKey=api_key).cse()
 		query = request.GET['query']
 		response_json = {}
@@ -171,7 +174,7 @@ class SearchView(APIView):
 					current_result['check'] = claim['claimReview'][0]['textualRating']
 					current_result['claim'] = claim['text']
 					response_json['Common Myths'].append(current_result)
-		result = resource.list(q= query, cx='016284288800975862249:mj2ausqodab').execute()
+		result = resource.list(q= query, cx = search_engine_id).execute()
 		if len(result) == 0:
 			response_json['News'] = "No results Available"
 		else:
