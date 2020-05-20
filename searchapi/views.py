@@ -155,7 +155,7 @@ class SearchView(APIView):
 		query = request.GET['query']
 		response_json = {}
 		fact_check = requests.get('https://factchecktools.googleapis.com/v1alpha1/claims:search',params = {'query':query,'key':api_key})
-		if len(fact_check.json()['claims']) == 0:
+		if len(fact_check.json()) == 0:
 			response_json['Common Myths'] = "No results Available"
 		else:
 			claims = fact_check.json()['claims']
