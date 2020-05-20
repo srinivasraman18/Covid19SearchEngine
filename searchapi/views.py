@@ -156,7 +156,8 @@ class SearchView(APIView):
 		response_json = {}
 		fact_check = requests.get('https://factchecktools.googleapis.com/v1alpha1/claims:search',params = {'query':query,'key':api_key})
 		if len(fact_check.json()) == 0:
-			response_json['Common Myths'] = "No results Available"
+			response_json['Common Myths'] = [{'source':'No Results Available for this query','check':'Not Available','claim':'Not Available'}]
+
 		else:
 			claims = fact_check.json()['claims']
 			ratings = [claims[i]['claimReview'][0]['textualRating'] for i in range(0,len(claims))]
@@ -176,7 +177,7 @@ class SearchView(APIView):
 					response_json['Common Myths'].append(current_result)
 		result = resource.list(q= query, cx = search_engine_id).execute()
 		if len(result) == 0:
-			response_json['News'] = "No results Available"
+			response_json['News'] = [{'source':'No Results Available for this query','content':'Not Available'}]
 		else:
 			url = None
 			extractor = extractors.ArticleExtractor()
