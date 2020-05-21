@@ -17,11 +17,12 @@ import os
 import pandas as pd
 import yake
 import csv
+from nltk import LancasterStemmer
  
 kw_extractor = yake.KeywordExtractor()
 
 
-def is_similar(x,y):
+def is_similar(x,y,threshold = 0.5):
 	X_list = word_tokenize(x)  
 	Y_list = word_tokenize(y) 
 	sw = stopwords.words('english')  
@@ -40,15 +41,67 @@ def is_similar(x,y):
 			c+= l1[i]*l2[i] 
 	cosine = c / float((sum(l1)*sum(l2))**0.5) 
 
-	return cosine > 0.5
+	return cosine >= threshold
 
 
-def faq_update(quest):
+
+def find_similarity(list1, list2):
+	intersection = list(set(list1)&set(list2))
+	if len(intersection)==0: #can be changed when population of CSV becomes larger to limit number of questions returned
+		return 0
+	else:
+		return 1
+
+
+def process(word_list):
+	lancaster=LancasterStemmer()
+	new_list=[]
+	for word in word_list:
+		w=lancaster.stem(word)
+		new_list.append(w)
+	return new_list
+
+def related_questions(quest):
+	keywords = kw_extractor.extract_keywords(quest)
+	key_list=[]
+	for k in keywords:
+		key_list.append(k[1])
+	key=str(key_list)
+
+	list_of_rel_q=[]
+
+
 	flag=0
 	contents=pd.read_csv('faqs.csv', index_col=0)
 	if os.path.getsize('faqs.csv') > 1:
 		for i, j in contents.iterrows():
-			sim=is_similar(quest,j[0])
+			sim=is_similar(quest,j[0],1)
+			if sim==True:
+				key_list1=process(key_list)
+				compare_list=process(eval(j[2]))
+				if find_similarity(key_list1,compare_list):
+					list_of_rel_q.append(j[0])
+					flag=1
+						
+		if flag==0:
+			i=0
+			while i<3:
+				list_of_rel_q.append(contents.loc[i,'Question'])
+				i+=1
+	return list_of_rel_q
+
+
+def update_faq(quest):
+	keywords = kw_extractor.extract_keywords(quest)
+	key_list=[]
+	for k in keywords:
+		key_list.append(k[1])
+	key=str(key_list)
+	flag=0
+	contents=pd.read_csv('faqs.csv', index_col=0)
+	if os.path.getsize('faqs.csv') > 1:
+		for i, j in contents.iterrows():
+			sim=is_similar(quest,j[0],0.5)
 			if sim == True:
 				flag=1
 				count= int(j[1])
@@ -56,7 +109,7 @@ def faq_update(quest):
 				contents.loc[i,'Count']=count	
 		if flag==0:
 			count=1
-			new_row= pd.DataFrame([[quest,count]], columns=['Question','Count'])
+			new_row= pd.DataFrame([[quest,count,key]], columns=['Question','Count','Keywords'])
 			contents=contents.append(new_row,ignore_index=True)
 		new_frame=contents.sort_values(['Count'], ascending=False)
 		new_frame=new_frame.reset_index(drop=True)
@@ -64,78 +117,8 @@ def faq_update(quest):
 				
 	elif os.path.getsize('faqs.csv')<=1 :
 		count=1
-		new_entry= pd.DataFrame([[quest,count]], columns=['Question', 'Count'])
+		new_entry= pd.DataFrame([[quest,count,key]], columns=['Question', 'Count','Keywords'])
 		new_entry.to_csv('faqs.csv')
-
-
-	
-
-
-
-def is_empty_csv(path):
-	with open(path) as csvfile:
-		reader = csv.reader(csvfile)
-		for i, _ in enumerate(reader):
-			if i:  # found the second row
-				return False
-	return True
-
-
-def similar(keywords,quest):
-	kw_extractor = yake.KeywordExtractor()
-	list_=keywords.split(",")
-	keywords1 = kw_extractor.extract_keywords(quest)
-	klist=[]
-	for k in keywords1:
-		klist.append(k[1])
-		list1_as_set = set(klist)
-		intersection = list1_as_set.intersection(list_)
-	if len(intersection)!=0:
-		return 1
-	else:
-		return 0
-		
-def gettop3():
-	contents=pd.read_csv('faqs1.csv')
-	return contents['Question'].tolist()[:3]
-
-
-def findsimilar(quest):
-	flag=0
-	similar_faqs = []
-	if not is_empty_csv('faqs1.csv'):
-		contents=pd.read_csv('faqs1.csv', index_col=0)
-
-		
-		count=0;
-		q=""
-		for i, j in contents.iterrows():
-			keywords=j[1]
-			ct=similar(keywords, quest)
-			if ct!=0:
-				similar_faqs.append(j[0])
-				count=count+1
-		if count==0:
-			similar_faqs = gettop3()
-		keywords = kw_extractor.extract_keywords(quest)
-		kw=""
-		for k in keywords:
-			kw=kw+k[1]+","
-		fg=contents[contents['Question']==quest.strip()]
-		new_row= pd.DataFrame([[quest,kw[:len(kw)-1]]], columns=['Question','Keywords'])
-		if fg.empty:
-			new_row.to_csv('faqs1.csv', header=None, mode='a')
-	else:
-		keywords = kw_extractor.extract_keywords(quest)
-		kw=""
-		for k in keywords:
-			kw=kw+k[1]+","
-			new_entry= pd.DataFrame([[quest,kw[:len(kw)-1]]], columns=['Question','Keywords'])
-			new_entry.to_csv('faqs1.csv')
-	return similar_faqs
-
-
-
 
 class FaqView(APIView):
 	def get(self,request):
@@ -195,7 +178,7 @@ class SearchView(APIView):
 						for content in page_results:
 							question = content.find('span',attrs = {'role':'heading'}).contents[0]
 							answer = content.find('div',attrs = {'class':'card-body'}).contents[0]
-							if is_similar(query,question):
+							if is_similar(query,question,0.5):
 								current_result['content'].append(answer)
 
 
@@ -209,7 +192,7 @@ class SearchView(APIView):
 				except TypeError:
 					continue
 
-		response_json["similar_questions"] = findsimilar(query)
-		faq_update(query)
+		update_faq(query)
+		response_json["similar_questions"] = related_questions(query)
 		return Response(response_json)
 
