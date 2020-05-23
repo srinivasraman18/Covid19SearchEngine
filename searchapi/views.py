@@ -130,10 +130,8 @@ class FaqView(APIView):
 
 class SearchView(APIView):
 	def get(self,request):
-		api_key = "AIzaSyCPbc8i_1wJhQK5MyuMucgwX4XSsJch2l8"
-		search_engine_id = "016284288800975862249:mj2ausqodab"
-		#api_key = "AIzaSyBUOR1z8vQaKwnS0vbS5dLK7GZUB20j99w"
-		#search_engine_id = "016400685532725398485:nojhx1tdntd"
+		api_key = os.environ["API_KEY"]
+		search_engine_id = os.environ["SEARCH_ENGINE_ID"]
 		resource = build("customsearch", 'v1', developerKey=api_key).cse()
 		query = request.GET['query']
 		response_json = {}

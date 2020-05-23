@@ -1,9 +1,7 @@
-,Question,Count
-0,Is sanitizer alcohol based and costly?,9
-1,Is turmeric enough to sanitize vegetables?,8
-2,How do I protect myself?,4
-3,covid19 curable?,3
-4,What are coronavirus symptoms?,2
-5,What type of sanitizer should I use?,2
-6,When will office reopen?,1
-7,Can covid cause pneumonia?,1
+,Question,Count,Keywords
+0,Can covid cause pneumonia?,4,"['covid cause pneumonia', 'pneumonia', 'covid']"
+1,How to protect myself from coronavirus?,3,"['coronavirus', 'protect']"
+2,Is turmeric enough to sanitize vegetables?,2,"['sanitize vegetables', 'vegetables', 'turmeric', 'sanitize']"
+3,Are masks available in pharmacies?,2,"['pharmacies', 'masks']"
+4,When will office reopen?,2,"['office reopen', 'reopen', 'office']"
+5,Is vaccine available?,1,['vaccine']
