@@ -18,8 +18,10 @@ import pandas as pd
 import yake
 import csv
 from nltk import LancasterStemmer
+import pymongo
  
 kw_extractor = yake.KeywordExtractor()
+client = pymongo.MongoClient("mongodb+srv://srinivasraman18:Covid19@cluster0-m2iml.mongodb.net/test?retryWrites=true&w=majority")
 
 
 def is_similar(x,y,threshold = 0.5):
@@ -194,3 +196,45 @@ class SearchView(APIView):
 		response_json["similar_questions"] = related_questions(query)
 		return Response(response_json)
 
+
+
+class StatisticsView(APIView):
+	def get(self,request):
+		mydb = client["covid19"]
+		state_level_v2 = mydb["state_level_v2"].find({},{'_id': 0})
+		national_level = mydb["national_level"].find({},{'_id': 0})
+		state_level_changes = mydb["state_level_changes"].find({},{'_id': 0})
+		zones = mydb["zones"].find({},{'_id': 0})
+
+		state_level_v2 = [result for result in state_level_v2]
+		national_level = [result for result in national_level][0]
+		state_level_changes = [result for result in state_level_changes][0]
+		zones = [result for result in zones][0]
+
+		national_level_dict = {}
+		for state in national_level["statewise"]:
+			national_level_dict[state["statecode"]] = state
+		state_level_changes_dict = dict(state_level_changes["states_daily"][-1])
+		"""district_level_changes_dict = {}
+		for state,state_value in district_level_changes["districtsDaily"].items():
+		  for district,dist_vals in state_value.items():
+			district_level_changes_dict[district] = dist_vals[-1]"""
+		zone_dict = {}
+		for district_info in zones["zones"]:
+			zone_dict[district_info["district"]] = district_info
+		response_json = state_level_v2
+
+		for i,state in enumerate(response_json):
+			state_code = state['statecode']
+			if state_code not in national_level_dict or state_code.lower() not in state_level_changes_dict:
+				del response_json[i]
+				continue
+			response_json[i]['state_case_info'] = national_level_dict[state_code]
+			response_json[i]['state_level_changes'] = state_level_changes_dict[state_code.lower()]
+			for j,district in enumerate(state['districtData']):
+				if district['district'] not in zone_dict or district['district'] not in zone_dict: 
+					del response_json[i]['districtData'][j]
+					continue
+				response_json[i]['districtData'][j]['zone'] = zone_dict[district['district']]['zone']
+
+		return Response(response_json)
