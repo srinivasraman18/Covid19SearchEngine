@@ -194,6 +194,7 @@ class SearchView(APIView):
 
 		update_faq(query)
 		response_json["similar_questions"] = related_questions(query)
+		print(response_json)
 		return Response(response_json)
 
 
