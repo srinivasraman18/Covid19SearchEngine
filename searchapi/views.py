@@ -78,10 +78,10 @@ def related_questions(quest):
 	if os.path.getsize('faqs.csv') > 1:
 		for i, j in contents.iterrows():
 			sim=is_similar(quest,j[0],1)
-			if sim==True:
+			if sim==False:
 				key_list1=process(key_list)
 				compare_list=process(eval(j[2]))
-				if find_similarity(key_list1,compare_list):
+				if find_similarity(key_list1,compare_list) == 1:
 					list_of_rel_q.append(j[0])
 					flag=1
 						
