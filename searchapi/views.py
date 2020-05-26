@@ -144,17 +144,23 @@ class SearchView(APIView):
 		else:
 			claims = fact_check.json()['claims']
 			ratings = [claims[i]['claimReview'][0]['textualRating'] for i in range(0,len(claims))]
-			response_json['Common Myths'] = []
-			for claim in claims:
-				current_result = {}
-				current_result['source'] = claim['claimReview'][0]['url']
-				current_result['check'] = claim['claimReview'][0]['textualRating']
-				current_result['claim'] = claim['text']
-				response_json['Common Myths'].append(current_result)
+			factcheck = None
+			for rating in ratings:
+				if rating == 'False' or 'myth' in rating or 'no evidence' in rating:
+					factcheck = False
+					
+			if factcheck == False:
+				response_json['Common Myths'] = []
 
-		
+				for claim in claims:
+					current_result = {}
+					current_result['source'] = claim['claimReview'][0]['url']
+					current_result['check'] = claim['claimReview'][0]['textualRating']
+					current_result['claim'] = claim['text']
+					response_json['Common Myths'].append(current_result)
 
-		print(response_json)
+			else:
+				response_json['Common Myths'] = [{'source':'No Results Available for this query','check':'Not Available','claim':'Not Available'}]
 		result = resource.list(q= query, cx = search_engine_id).execute()
 		if len(result) == 0:
 			response_json['News'] = [{'source':'No Results Available for this query','content':'Not Available'}]
@@ -191,7 +197,6 @@ class SearchView(APIView):
 
 		update_faq(query)
 		response_json["similar_questions"] = related_questions(query)
-		print(response_json)
 		return Response(response_json)
 
 
