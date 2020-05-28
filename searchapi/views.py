@@ -290,6 +290,11 @@ class SearchView(APIView):
 								current_result['content'].append(summary)
 								query_json['News'].append(current_result)
 
+
+					
+					except urllib.error.HTTPError as e:
+						continue
+
 					except TypeError:
 						continue
 
