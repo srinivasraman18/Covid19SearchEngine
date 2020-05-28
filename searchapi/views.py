@@ -206,7 +206,7 @@ class SearchView(APIView):
 							response_json['News'].append(current_result)
 					
 
-					except urllib.error.HttpError as e:
+					except urllib.error.HTTPError as e:
 						continue
 
 					except TypeError:
