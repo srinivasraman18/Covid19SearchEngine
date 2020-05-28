@@ -19,7 +19,8 @@ import yake
 import csv
 from nltk import LancasterStemmer
 import pymongo
- 
+import time
+import copy
 kw_extractor = yake.KeywordExtractor()
 client = pymongo.MongoClient("mongodb+srv://srinivasraman18:Covid19@cluster0-m2iml.mongodb.net/test?retryWrites=true&w=majority")
 
@@ -126,7 +127,7 @@ class FaqView(APIView):
 	def get(self,request):
 		df = pd.read_csv('faqs.csv')
 		response_json = {}
-		response_json["faqs"] = df['Question'].tolist()[:3]
+		response_json["faqs"] = df['Question'].tolist()[:5]
 		return Response(response_json)
 
 
@@ -138,6 +139,7 @@ class SearchView(APIView):
 		query = request.GET['query']
 		response_json = {}
 		fact_check = requests.get('https://factchecktools.googleapis.com/v1alpha1/claims:search',params = {'query':query,'key':api_key})
+		db = client["news"]
 		if len(fact_check.json()) == 0:
 			response_json['Common Myths'] = [{'source':'No Results Available for this query','check':'Not Available','claim':'Not Available'}]
 
@@ -151,7 +153,6 @@ class SearchView(APIView):
 					
 			if factcheck == False:
 				response_json['Common Myths'] = []
-
 				for claim in claims:
 					current_result = {}
 					current_result['source'] = claim['claimReview'][0]['url']
@@ -162,38 +163,146 @@ class SearchView(APIView):
 			else:
 				response_json['Common Myths'] = [{'source':'No Results Available for this query','check':'Not Available','claim':'Not Available'}]
 		result = resource.list(q= query, cx = search_engine_id).execute()
+		stored_queries = db["news"].find({'_id':query})
+		stored_result = []
+		for q in stored_queries:
+			stored_result.append(q)
+		is_stored = None
+		if len(stored_result)==0:	
+			is_stored = False
+		else:
+			is_stored = True
 		if len(result) == 0:
 			response_json['News'] = [{'source':'No Results Available for this query','content':'Not Available'}]
 		else:
 			url = None
 			extractor = extractors.ArticleExtractor()
 			response_json['News'] = []
-			for item in result['items']:
-				try:
-					url = item['link']
-					current_result = {}
-					current_result['source'] = url
-					current_result['content'] = []
-					if url == 'https://www.cdc.gov/coronavirus/2019-ncov/faq.html' or url=='https://www.cdc.gov/coronavirus/2019-ncov/hcp/faq.html':
-						page = requests.get("https://www.cdc.gov/coronavirus/2019-ncov/faq.html")
-						soup = BeautifulSoup(page.content, 'html.parser')
-						page_results= soup.find_all('div',attrs={'class': 'card bar'})
-						for content in page_results:
-							question = content.find('span',attrs = {'role':'heading'}).contents[0]
-							answer = content.find('div',attrs = {'class':'card-body'}).contents[0]
-							if is_similar(query,question,0.5):
-								current_result['content'].append(answer)
+			if is_stored == False:
+				for item in result['items']:
+					try:
+						url = item['link']
+						current_result = {}
+						current_result['source'] = url
+						current_result['content'] = []
+						if url == 'https://www.cdc.gov/coronavirus/2019-ncov/faq.html' or url=='https://www.cdc.gov/coronavirus/2019-ncov/hcp/faq.html':
+							page = requests.get("https://www.cdc.gov/coronavirus/2019-ncov/faq.html")
+							soup = BeautifulSoup(page.content, 'html.parser')
+							page_results= soup.find_all('div',attrs={'class': 'card bar'})
+							for content in page_results:
+								question = content.find('span',attrs = {'role':'heading'}).contents[0]
+								answer = content.find('div',attrs = {'class':'card-body'}).contents[0]
+								if is_similar(query,question,0.5):
+									current_result['content'].append(answer)
 
+
+						else:
+							#response = requests.get(url)
+							content = extractor.get_content_from_url(url)
+							summary = summarize(content, ratio = 0.15)
+							current_result['content'] = []
+							current_result['content'].append(summary)
+							response_json['News'].append(current_result)
+					
+					except TypeError:
+						continue
+
+					except AttributeError:
+						continue
+				
+				db_json = {}
+				db_json['News'] = copy.deepcopy(response_json['News'])
+				for i,news in enumerate(db_json['News']):
+					url = news['source']
+					response = requests.get(url,verify=False)
+					headers = response.headers
+					last_modified = None
+					if 'Last-Modified' in headers:
+						last_modified = headers['Last-Modified']
+					else:
+						last_modified = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime()) 
+					db_json['News'][i]['last_modified'] = last_modified
+					
+
+				db_json['News'] = [[json] for json in db_json['News']]
+				db_json['_id'] = query
+				db["news"].insert_one(db_json)
+
+
+			else:
+				query_json= stored_result[0]
+				stored_sources = []
+				for news in query_json["News"]:
+					news_dict = news[-1]
+					response = requests.get(news_dict["source"])
+					stored_sources.append(news_dict["source"])
+					if 'Last-Modified' in response.headers:
+						if time.strptime(response.headers['Last-Modified'],"%a, %d %b %Y %H:%M:%S %Z") > time.strptime(news_dict['last_modified'],"%a, %d %b %Y %H:%M:%S %Z"):
+							current_result = {}
+							content = extractor.get_content(response.text)
+							summary = summarize(content, ratio = 0.15)
+							current_result['content'] = []
+							current_result['content'].append(summary)
+							current_result['source'] = news_dict["source"]
+							current_result['last_modified'] = response.headers['Last-Modified']
+							news.append(current_result)
 
 					else:
-						content = extractor.get_content_from_url(url)
+						stored_content = news_dict["content"]
+						content = extractor.get_content(response.text)
 						summary = summarize(content, ratio = 0.15)
-						current_result['content'] = []
-						current_result['content'].append(summary)
-						response_json['News'].append(current_result)
+						if stored_content[0] != summary:
+							current_result = {}
+							current_result['content'] = []
+							current_result['content'].append(summary)
+							current_result['source'] = news_dict["source"]
+							current_result['last_modified'] = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime())
+							news.append(current_result)
 				
-				except TypeError:
-					continue
+				for item in result['items']:
+					try:
+						if item['link'] not in stored_sources:
+							url = item['link']
+							current_result = {}
+							current_result['source'] = url
+							current_result['content'] = []
+							if url == 'https://www.cdc.gov/coronavirus/2019-ncov/faq.html' or url=='https://www.cdc.gov/coronavirus/2019-ncov/hcp/faq.html':
+								page = requests.get("https://www.cdc.gov/coronavirus/2019-ncov/faq.html")
+								soup = BeautifulSoup(page.content, 'html.parser')
+								page_results= soup.find_all('div',attrs={'class': 'card bar'})
+								for content in page_results:
+									question = content.find('span',attrs = {'role':'heading'}).contents[0]
+									answer = content.find('div',attrs = {'class':'card-body'}).contents[0]
+									if is_similar(query,question,0.5):
+										current_result['content'].append(answer)
+
+
+							else:
+								#response = requests.get(url)
+								content = extractor.get_content_from_url(url)
+								summary = summarize(content, ratio = 0.15)
+								current_result['content'].append(summary)
+								query_json['News'].append(current_result)
+
+					except TypeError:
+						continue
+
+					except AttributeError:
+						continue
+
+
+					db["news"].save(query_json)
+
+					response_json["News"] = []
+					for news in query_json["News"]:
+						latest_news = news[-1]
+						current_dict = {}
+						current_dict["source"] = latest_news["source"]
+						current_dict["content"] = latest_news["content"]
+						response_json["News"].append(current_dict)
+					
+
+
 
 		update_faq(query)
 		response_json["similar_questions"] = related_questions(query)
