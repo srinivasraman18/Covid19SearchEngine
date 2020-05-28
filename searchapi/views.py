@@ -21,6 +21,7 @@ from nltk import LancasterStemmer
 import pymongo
 import time
 import copy
+import urllib
 kw_extractor = yake.KeywordExtractor()
 client = pymongo.MongoClient("mongodb+srv://srinivasraman18:Covid19@cluster0-m2iml.mongodb.net/test?retryWrites=true&w=majority")
 
@@ -204,12 +205,17 @@ class SearchView(APIView):
 							current_result['content'].append(summary)
 							response_json['News'].append(current_result)
 					
+
+					except urllib.error.HttpError as e:
+						continue
+
 					except TypeError:
 						continue
 
 					except AttributeError:
 						continue
-				
+					
+
 				db_json = {}
 				db_json['News'] = copy.deepcopy(response_json['News'])
 				for i,news in enumerate(db_json['News']):
