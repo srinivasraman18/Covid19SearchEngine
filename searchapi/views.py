@@ -139,7 +139,7 @@ class SearchView(APIView):
 		resource = build("customsearch", 'v1', developerKey=api_key).cse()
 		query = request.GET['query']
 		response_json = {}
-		fact_check = requests.get('https://factchecktools.googleapis.com/v1alpha1/claims:search',params = {'query':query,'key':api_key})
+		fact_check = requests.get('https://factchecktools.googleapis.com/v1alpha1/claims:search',params = {'query':query,'key':api_key,'languageCode':'en-US'})
 		db = client["news"]
 		if len(fact_check.json()) == 0:
 			response_json['Common Myths'] = [{'source':'No Results Available for this query','check':'Not Available','claim':'Not Available'}]
@@ -207,12 +207,15 @@ class SearchView(APIView):
 					
 
 					except urllib.error.HTTPError as e:
+						current_result['content'] = ["No results available"]
 						continue
 
 					except TypeError:
+						current_result['content'] = ["No results available"]
 						continue
 
 					except AttributeError:
+						current_result['content'] = ["No results available"]
 						continue
 					
 
@@ -236,9 +239,12 @@ class SearchView(APIView):
 
 
 			else:
+
+				#print("Stored Result",stored_result)
 				query_json= stored_result[0]
 				stored_sources = []
 				for news in query_json["News"]:
+					print(news)
 					news_dict = news[-1]
 					response = requests.get(news_dict["source"])
 					stored_sources.append(news_dict["source"])
@@ -272,40 +278,39 @@ class SearchView(APIView):
 							current_result = {}
 							current_result['source'] = url
 							current_result['content'] = []
-							if url == 'https://www.cdc.gov/coronavirus/2019-ncov/faq.html' or url=='https://www.cdc.gov/coronavirus/2019-ncov/hcp/faq.html':
-								page = requests.get("https://www.cdc.gov/coronavirus/2019-ncov/faq.html")
-								soup = BeautifulSoup(page.content, 'html.parser')
-								page_results= soup.find_all('div',attrs={'class': 'card bar'})
-								for content in page_results:
-									question = content.find('span',attrs = {'role':'heading'}).contents[0]
-									answer = content.find('div',attrs = {'class':'card-body'}).contents[0]
-									if is_similar(query,question,0.5):
-										current_result['content'].append(answer)
-
-
+				
+							response = requests.get(url)
+							content = extractor.get_content(url.text)
+							summary = summarize(content, ratio = 0.15)
+							current_result['content'].append(summary)
+							if 'Last-Modified' in response.headers:
+								current_result['last_modified'] = response.headers['Last-Modified']
 							else:
-								#response = requests.get(url)
-								content = extractor.get_content_from_url(url)
-								summary = summarize(content, ratio = 0.15)
-								current_result['content'].append(summary)
-								query_json['News'].append(current_result)
+								current_result['last_modified'] = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime())
+							query_json['News'].append([current_result])
+
 
 
 					
 					except urllib.error.HTTPError as e:
+						current_result['content'] = ["No results available"]
 						continue
 
 					except TypeError:
+						current_result['content'] = ["No results available"]
 						continue
 
 					except AttributeError:
+						current_result['content'] = ["No results available"]
 						continue
 
 
 					db["news"].save(query_json)
+					
 
 					response_json["News"] = []
 					for news in query_json["News"]:
+						print(news)
 						latest_news = news[-1]
 						current_dict = {}
 						current_dict["source"] = latest_news["source"]
