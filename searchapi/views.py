@@ -177,7 +177,7 @@ class SearchView(APIView):
 			is_stored = False
 		else:
 			is_stored = True
-		if len(result) == 0:
+		if len(result) == 0 or 'items' not in result:
 			response_json['News'] = [{'source':'No Results Available for this query','content':'Not Available'}]
 		else:
 			url = None
