@@ -22,6 +22,7 @@ import pymongo
 import time
 import copy
 import urllib
+import re
 kw_extractor = yake.KeywordExtractor()
 client = pymongo.MongoClient("mongodb+srv://srinivasraman18:Covid19@cluster0-m2iml.mongodb.net/test?retryWrites=true&w=majority")
 
@@ -138,6 +139,9 @@ class SearchView(APIView):
 		search_engine_id = os.environ["SEARCH_ENGINE_ID"]
 		resource = build("customsearch", 'v1', developerKey=api_key).cse()
 		query = request.GET['query']
+		query = query.lower()
+		query = re.sub(r'[^\w\s]','',query)
+		print(query)
 		response_json = {}
 		fact_check = requests.get('https://factchecktools.googleapis.com/v1alpha1/claims:search',params = {'query':query,'key':api_key,'languageCode':'en-US'})
 		db = client["news"]
@@ -195,15 +199,20 @@ class SearchView(APIView):
 								answer = content.find('div',attrs = {'class':'card-body'}).contents[0]
 								if is_similar(query,question,0.5):
 									current_result['content'].append(answer)
+							
 
 
 						else:
-							#response = requests.get(url)
-							content = extractor.get_content_from_url(url)
+							response = requests.get(url)
+							content = extractor.get_content(response.text)
 							summary = summarize(content, ratio = 0.15)
-							current_result['content'] = []
 							current_result['content'].append(summary)
-							response_json['News'].append(current_result)
+							if 'Last-Modified' in response.headers:
+								current_result['last_modified'] = response.headers['Last-Modified']
+							else:
+								current_result['last_modified'] = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime())
+
+						response_json['News'].append(current_result)
 					
 
 					except urllib.error.HTTPError as e:
@@ -220,6 +229,7 @@ class SearchView(APIView):
 					
 
 				db_json = {}
+				print(response_json)
 				db_json['News'] = copy.deepcopy(response_json['News'])
 				for i,news in enumerate(db_json['News']):
 					url = news['source']
@@ -232,7 +242,6 @@ class SearchView(APIView):
 						last_modified = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime()) 
 					db_json['News'][i]['last_modified'] = last_modified
 					
-
 				db_json['News'] = [[json] for json in db_json['News']]
 				db_json['_id'] = query
 				db["news"].insert_one(db_json)
@@ -244,7 +253,6 @@ class SearchView(APIView):
 				query_json= stored_result[0]
 				stored_sources = []
 				for news in query_json["News"]:
-					print(news)
 					news_dict = news[-1]
 					response = requests.get(news_dict["source"])
 					stored_sources.append(news_dict["source"])
@@ -310,7 +318,6 @@ class SearchView(APIView):
 
 					response_json["News"] = []
 					for news in query_json["News"]:
-						print(news)
 						latest_news = news[-1]
 						current_dict = {}
 						current_dict["source"] = latest_news["source"]
