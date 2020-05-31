@@ -23,6 +23,7 @@ import time
 import copy
 import urllib
 import re
+import sys
 kw_extractor = yake.KeywordExtractor()
 client = pymongo.MongoClient("mongodb+srv://srinivasraman18:Covid19@cluster0-m2iml.mongodb.net/test?retryWrites=true&w=majority")
 
@@ -141,7 +142,6 @@ class SearchView(APIView):
 		query = request.GET['query']
 		query = query.lower()
 		query = re.sub(r'[^\w\s]','',query)
-		print(query)
 		response_json = {}
 		fact_check = requests.get('https://factchecktools.googleapis.com/v1alpha1/claims:search',params = {'query':query,'key':api_key,'languageCode':'en-US'})
 		db = client["news"]
@@ -196,7 +196,8 @@ class SearchView(APIView):
 							page_results= soup.find_all('div',attrs={'class': 'card bar'})
 							for content in page_results:
 								question = content.find('span',attrs = {'role':'heading'}).contents[0]
-								answer = content.find('div',attrs = {'class':'card-body'}).contents[0]
+								answer = content.find('div',attrs = {'class':'card-body'}).contents[0].text
+
 								if is_similar(query,question,0.5):
 									current_result['content'].append(answer)
 							
@@ -229,8 +230,7 @@ class SearchView(APIView):
 					
 
 				db_json = {}
-				print(response_json)
-				db_json['News'] = copy.deepcopy(response_json['News'])
+				db_json['News'] = response_json['News']
 				for i,news in enumerate(db_json['News']):
 					url = news['source']
 					response = requests.get(url,verify=False)
