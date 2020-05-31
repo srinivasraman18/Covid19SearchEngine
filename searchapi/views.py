@@ -187,19 +187,27 @@ class SearchView(APIView):
 				for item in result['items']:
 					try:
 						url = item['link']
-						current_result = {}
-						current_result['source'] = url
-						current_result['content'] = []
+					
+						
 						if url == 'https://www.cdc.gov/coronavirus/2019-ncov/faq.html' or url=='https://www.cdc.gov/coronavirus/2019-ncov/hcp/faq.html':
 							page = requests.get("https://www.cdc.gov/coronavirus/2019-ncov/faq.html")
 							soup = BeautifulSoup(page.content, 'html.parser')
 							page_results= soup.find_all('div',attrs={'class': 'card bar'})
 							for content in page_results:
 								question = content.find('span',attrs = {'role':'heading'}).contents[0]
-								answer = content.find('div',attrs = {'class':'card-body'}).contents[0].text
-
-								if is_similar(query,question,0.5):
+								question = question.lower()
+								re.sub(r'[^\w\s]','',question)
+								question = question
+								answer = content.find('div',attrs = {'class':'card-body'}).find('p').getText()
+								
+								if len(answer)!=0 and is_similar(query,question,0.5):
+									current_result = {}
+									current_result['source'] = url
+									current_result['content'] = []
+									print(question,":",answer)
 									current_result['content'].append(answer)
+									response_json['News'].append(current_result)
+
 							
 
 
@@ -207,13 +215,16 @@ class SearchView(APIView):
 							response = requests.get(url)
 							content = extractor.get_content(response.text)
 							summary = summarize(content, ratio = 0.15)
+							current_result = {}
+							current_result['source'] = url
+							current_result['content'] = []
 							current_result['content'].append(summary)
 							if 'Last-Modified' in response.headers:
 								current_result['last_modified'] = response.headers['Last-Modified']
 							else:
 								current_result['last_modified'] = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime())
 
-						response_json['News'].append(current_result)
+							response_json['News'].append(current_result)
 					
 
 					except urllib.error.HTTPError as e:
