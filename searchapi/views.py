@@ -217,7 +217,7 @@ class SearchView(APIView):
 							content = extractor.get_content(response.text)
 							content_len = len(content.split('.'))
 							ratio = (10 * 100)/ content_len 
-							summary = summarize(content, ratio = ratio)
+							summary = summarize(content, ratio = ratio/100)
 							current_result = {}
 							current_result['source'] = url
 							current_result['content'] = []
@@ -274,7 +274,9 @@ class SearchView(APIView):
 						if time.strptime(response.headers['Last-Modified'],"%a, %d %b %Y %H:%M:%S %Z") > time.strptime(news_dict['last_modified'],"%a, %d %b %Y %H:%M:%S %Z"):
 							current_result = {}
 							content = extractor.get_content(response.text)
-							summary = summarize(content, ratio = 0.15)
+							content_len = len(content.split('.'))
+							ratio = (10 * 100)/ content_len 
+							summary = summarize(content, ratio = ratio/100)
 							current_result['content'] = []
 							current_result['content'].append(summary)
 							current_result['source'] = news_dict["source"]
@@ -284,7 +286,9 @@ class SearchView(APIView):
 					else:
 						stored_content = news_dict["content"]
 						content = extractor.get_content(response.text)
-						summary = summarize(content, ratio = 0.15)
+						content_len = len(content.split('.'))
+						ratio = (10 * 100)/ content_len 
+						summary = summarize(content, ratio = ratio/100)
 						if stored_content[0] != summary:
 							current_result = {}
 							current_result['content'] = []
@@ -306,7 +310,7 @@ class SearchView(APIView):
 							content_len = len(content.split('.'))
 							print(content_len)
 							ratio = (10 *100)/ content_len 
-							summary = summarize(content, ratio = ratio)							
+							summary = summarize(content, ratio = ratio/100)							
 							current_result['content'].append(summary)
 							if 'Last-Modified' in response.headers:
 								current_result['last_modified'] = response.headers['Last-Modified']
