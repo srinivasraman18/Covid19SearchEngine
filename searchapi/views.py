@@ -24,6 +24,7 @@ import copy
 import urllib
 import re
 import sys
+
 kw_extractor = yake.KeywordExtractor()
 client = pymongo.MongoClient("mongodb+srv://srinivasraman18:Covid19@cluster0-m2iml.mongodb.net/test?retryWrites=true&w=majority")
 
@@ -214,7 +215,9 @@ class SearchView(APIView):
 						else:
 							response = requests.get(url)
 							content = extractor.get_content(response.text)
-							summary = summarize(content, ratio = 0.15)
+							content_len = len(content.split('.'))
+							ratio = (10 * 100)/ content_len 
+							summary = summarize(content, ratio = ratio)
 							current_result = {}
 							current_result['source'] = url
 							current_result['content'] = []
@@ -300,7 +303,10 @@ class SearchView(APIView):
 				
 							response = requests.get(url)
 							content = extractor.get_content(url.text)
-							summary = summarize(content, ratio = 0.15)
+							content_len = len(content.split('.'))
+							print(content_len)
+							ratio = (10 *100)/ content_len 
+							summary = summarize(content, ratio = ratio)							
 							current_result['content'].append(summary)
 							if 'Last-Modified' in response.headers:
 								current_result['last_modified'] = response.headers['Last-Modified']
