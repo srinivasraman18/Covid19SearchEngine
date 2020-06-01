@@ -24,10 +24,16 @@ import copy
 import urllib
 import re
 import sys
+from sumy.parsers.html import HtmlParser
+from sumy.parsers.plaintext import PlaintextParser
+from sumy.nlp.tokenizers import Tokenizer
+from sumy.summarizers.lsa import LsaSummarizer as Summarizer
+from sumy.nlp.stemmers import Stemmer
+from sumy.utils import get_stop_words
 
+LANGUAGE = "english"
 kw_extractor = yake.KeywordExtractor()
 client = pymongo.MongoClient("mongodb+srv://srinivasraman18:Covid19@cluster0-m2iml.mongodb.net/test?retryWrites=true&w=majority")
-
 
 def is_similar(x,y,threshold = 0.5):
 	X_list = word_tokenize(x)  
@@ -188,7 +194,8 @@ class SearchView(APIView):
 				for item in result['items']:
 					try:
 						url = item['link']
-					
+						if 'pdf' in url:
+							continue
 						
 						if url == 'https://www.cdc.gov/coronavirus/2019-ncov/faq.html' or url=='https://www.cdc.gov/coronavirus/2019-ncov/hcp/faq.html':
 							page = requests.get("https://www.cdc.gov/coronavirus/2019-ncov/faq.html")
@@ -213,11 +220,19 @@ class SearchView(APIView):
 
 
 						else:
+							print(url)
 							response = requests.get(url)
-							content = extractor.get_content(response.text)
-							content_len = len(content.split('.'))
-							ratio = (10 * 100)/ content_len 
-							summary = summarize(content, ratio = ratio/100)
+							"""content = extractor.get_content(response.text)
+							content_array = content.split('\n')
+							content_len = len(content_array)
+							ratio = (5 * 100)/ content_len 
+							summary = summarize(content, ratio = ratio/100)"""
+							parser = HtmlParser.from_url(url, Tokenizer(LANGUAGE))
+							stemmer = Stemmer(language=LANGUAGE)
+							summarizer = Summarizer(stemmer)
+							summarizer.stop_words = get_stop_words(LANGUAGE)
+							summary = summarizer(parser.document, 5)
+							summary = '\n'.join([line._text for line in summary])
 							current_result = {}
 							current_result['source'] = url
 							current_result['content'] = []
@@ -241,13 +256,16 @@ class SearchView(APIView):
 					except AttributeError:
 						current_result['content'] = ["No results available"]
 						continue
-					
+					except requests.exceptions.SSLError as e:
+						current_result['content'] = ["No results available"]
+						continue
+
 
 				db_json = {}
 				db_json['News'] = response_json['News']
 				for i,news in enumerate(db_json['News']):
 					url = news['source']
-					response = requests.get(url,verify=False)
+					response = requests.get(url)
 					headers = response.headers
 					last_modified = None
 					if 'Last-Modified' in headers:
@@ -268,6 +286,7 @@ class SearchView(APIView):
 				stored_sources = []
 				for news in query_json["News"]:
 					news_dict = news[-1]
+					url = news_dict["source"]
 					response = requests.get(news_dict["source"])
 					stored_sources.append(news_dict["source"])
 					if 'Last-Modified' in response.headers:
@@ -275,42 +294,52 @@ class SearchView(APIView):
 							current_result = {}
 							content = extractor.get_content(response.text)
 							content_len = len(content.split('.'))
-							ratio = (10 * 100)/ content_len 
-							summary = summarize(content, ratio = ratio/100)
+							parser = HtmlParser.from_url(url, Tokenizer(LANGUAGE))
+							stemmer = Stemmer(language=LANGUAGE)
+							summarizer = Summarizer(stemmer)
+							summarizer.stop_words = get_stop_words(LANGUAGE)
+							summary = summarizer(parser.document, 5)
+							summary = '\n'.join([line._text for line in summary])
 							current_result['content'] = []
 							current_result['content'].append(summary)
 							current_result['source'] = news_dict["source"]
 							current_result['last_modified'] = response.headers['Last-Modified']
 							news.append(current_result)
 
-					else:
+					"""else:
+						print(url)
 						stored_content = news_dict["content"]
-						content = extractor.get_content(response.text)
-						content_len = len(content.split('.'))
-						ratio = (10 * 100)/ content_len 
-						summary = summarize(content, ratio = ratio/100)
+						parser = HtmlParser.from_url(url, Tokenizer(LANGUAGE))
+						stemmer = Stemmer(language=LANGUAGE)
+						summarizer = Summarizer(stemmer)
+						summarizer.stop_words = get_stop_words(LANGUAGE)
+						summary = summarizer(parser.document, 5)
+						summary = '\n'.join([line._text for line in summary])
 						if stored_content[0] != summary:
 							current_result = {}
 							current_result['content'] = []
 							current_result['content'].append(summary)
 							current_result['source'] = news_dict["source"]
 							current_result['last_modified'] = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime())
-							news.append(current_result)
+							news.append(current_result)"""
 				
 				for item in result['items']:
 					try:
 						if item['link'] not in stored_sources:
 							url = item['link']
+							if 'pdf' in url:
+								continue
 							current_result = {}
 							current_result['source'] = url
 							current_result['content'] = []
 				
 							response = requests.get(url)
-							content = extractor.get_content(url.text)
-							content_len = len(content.split('.'))
-							print(content_len)
-							ratio = (10 *100)/ content_len 
-							summary = summarize(content, ratio = ratio/100)							
+							parser = HtmlParser.from_url(url, Tokenizer(LANGUAGE))
+							stemmer = Stemmer(language=LANGUAGE)
+							summarizer = Summarizer(stemmer)
+							summarizer.stop_words = get_stop_words(LANGUAGE)
+							summary = summarizer(parser.document, 5)
+							summary = '\n'.join([line._text for line in summary])						
 							current_result['content'].append(summary)
 							if 'Last-Modified' in response.headers:
 								current_result['last_modified'] = response.headers['Last-Modified']
@@ -330,6 +359,10 @@ class SearchView(APIView):
 						continue
 
 					except AttributeError:
+						current_result['content'] = ["No results available"]
+						continue
+
+					except requests.exceptions.SSLError as e:
 						current_result['content'] = ["No results available"]
 						continue
 
