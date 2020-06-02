@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'searchapi.apps.SearchapiConfig',
+    'after_response',
 ]
 
 MIDDLEWARE = [

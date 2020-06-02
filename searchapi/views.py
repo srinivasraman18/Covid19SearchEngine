@@ -30,10 +30,14 @@ from sumy.nlp.tokenizers import Tokenizer
 from sumy.summarizers.lsa import LsaSummarizer as Summarizer
 from sumy.nlp.stemmers import Stemmer
 from sumy.utils import get_stop_words
+import after_response
 
 LANGUAGE = "english"
 kw_extractor = yake.KeywordExtractor()
 client = pymongo.MongoClient("mongodb+srv://srinivasraman18:Covid19@cluster0-m2iml.mongodb.net/test?retryWrites=true&w=majority")
+api_key = os.environ["API_KEY"]
+search_engine_id = os.environ["SEARCH_ENGINE_ID"]
+resource = build("customsearch", 'v1', developerKey=api_key).cse()
 
 def is_similar(x,y,threshold = 0.5):
 	X_list = word_tokenize(x)  
@@ -133,6 +137,94 @@ def update_faq(quest):
 		new_entry= pd.DataFrame([[quest,count,key]], columns=['Question', 'Count','Keywords'])
 		new_entry.to_csv('faqs.csv')
 
+
+@after_response.enable
+def update_db(stored_result,db,query):
+	result = resource.list(q= query, cx = search_engine_id).execute()
+	query_json= stored_result[0]
+	stored_sources = []
+	for news in query_json["News"]:
+		news_dict = news[-1]
+		url = news_dict["source"]
+		response = requests.get(news_dict["source"])
+		stored_sources.append(news_dict["source"])
+		if 'Last-Modified' in response.headers:
+			if time.strptime(response.headers['Last-Modified'],"%a, %d %b %Y %H:%M:%S %Z") > time.strptime(news_dict['last_modified'],"%a, %d %b %Y %H:%M:%S %Z"):
+				current_result = {}
+				parser = HtmlParser.from_url(url, Tokenizer(LANGUAGE))
+				stemmer = Stemmer(language=LANGUAGE)
+				summarizer = Summarizer(stemmer)
+				summarizer.stop_words = get_stop_words(LANGUAGE)
+				summary = summarizer(parser.document, 5)
+				summary = '\n'.join([line._text for line in summary])
+				current_result['content'] = []
+				current_result['content'].append(summary)
+				current_result['source'] = news_dict["source"]
+				current_result['last_modified'] = response.headers['Last-Modified']
+				news.append(current_result)
+
+		"""else:
+			print(url)
+			stored_content = news_dict["content"]
+			parser = HtmlParser.from_url(url, Tokenizer(LANGUAGE))
+			stemmer = Stemmer(language=LANGUAGE)
+			summarizer = Summarizer(stemmer)
+			summarizer.stop_words = get_stop_words(LANGUAGE)
+			summary = summarizer(parser.document, 5)
+			summary = '\n'.join([line._text for line in summary])
+			if stored_content[0] != summary:
+				current_result = {}
+				current_result['content'] = []
+				current_result['content'].append(summary)
+				current_result['source'] = news_dict["source"]
+				current_result['last_modified'] = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime())
+				news.append(current_result)"""
+
+	for item in result['items']:
+		try:
+			if item['link'] not in stored_sources:
+				url = item['link']
+				if 'pdf' in url or 'xml.gz' in url:
+					continue
+				current_result = {}
+				current_result['source'] = url
+				current_result['content'] = []
+
+				response = requests.get(url)
+				parser = HtmlParser.from_url(url, Tokenizer(LANGUAGE))
+				stemmer = Stemmer(language=LANGUAGE)
+				summarizer = Summarizer(stemmer)
+				summarizer.stop_words = get_stop_words(LANGUAGE)
+				summary = summarizer(parser.document, 5)
+				summary = '\n'.join([line._text for line in summary])						
+				current_result['content'].append(summary)
+				if 'Last-Modified' in response.headers:
+					current_result['last_modified'] = response.headers['Last-Modified']
+				else:
+					current_result['last_modified'] = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime())
+				query_json['News'].append([current_result])
+
+
+		except urllib.error.HTTPError as e:
+			current_result['content'] = ["No results available"]
+			continue
+
+		except TypeError:
+			current_result['content'] = ["No results available"]
+			continue
+
+		except AttributeError:
+			current_result['content'] = ["No results available"]
+			continue
+
+		except requests.exceptions.SSLError as e:
+			current_result['content'] = ["No results available"]
+			continue
+
+
+		db["news"].save(query_json)
+
+
 class FaqView(APIView):
 	def get(self,request):
 		df = pd.read_csv('faqs.csv')
@@ -142,13 +234,12 @@ class FaqView(APIView):
 
 
 class SearchView(APIView):
+
 	def get(self,request):
-		api_key = os.environ["API_KEY"]
-		search_engine_id = os.environ["SEARCH_ENGINE_ID"]
-		resource = build("customsearch", 'v1', developerKey=api_key).cse()
 		query = request.GET['query']
 		query = query.lower()
 		query = re.sub(r'[^\w\s]','',query)
+
 		response_json = {}
 		fact_check = requests.get('https://factchecktools.googleapis.com/v1alpha1/claims:search',params = {'query':query,'key':api_key,'languageCode':'en-US'})
 		db = client["news"]
@@ -174,7 +265,6 @@ class SearchView(APIView):
 
 			else:
 				response_json['Common Myths'] = [{'source':'No Results Available for this query','check':'Not Available','claim':'Not Available'}]
-		result = resource.list(q= query, cx = search_engine_id).execute()
 		stored_queries = db["news"].find({'_id':query})
 		stored_result = []
 		for q in stored_queries:
@@ -184,6 +274,21 @@ class SearchView(APIView):
 			is_stored = False
 		else:
 			is_stored = True
+		if is_stored == True:
+			update_db.after_response(stored_result,db,query)
+			response_json["News"] = []
+			query_json= stored_result[0]
+			for news in query_json["News"]:
+				latest_news = news[-1]
+				current_dict = {}
+				current_dict["source"] = latest_news["source"]
+				current_dict["content"] = latest_news["content"]
+				response_json["News"].append(current_dict)
+				update_faq(query)
+				response_json["similar_questions"] = related_questions(query)
+				return Response(response_json)
+
+		result = resource.list(q= query, cx = search_engine_id).execute()
 		if len(result) == 0 or 'items' not in result:
 			response_json['News'] = [{'source':'No Results Available for this query','content':'Not Available'}]
 		else:
@@ -194,7 +299,7 @@ class SearchView(APIView):
 				for item in result['items']:
 					try:
 						url = item['link']
-						if 'pdf' in url:
+						if 'pdf' in url or 'xml.gz' in url:
 							continue
 						
 						if url == 'https://www.cdc.gov/coronavirus/2019-ncov/faq.html' or url=='https://www.cdc.gov/coronavirus/2019-ncov/hcp/faq.html':
@@ -212,22 +317,12 @@ class SearchView(APIView):
 									current_result = {}
 									current_result['source'] = url
 									current_result['content'] = []
-									print(question,":",answer)
+									#print(question,":",answer)
 									current_result['content'].append(answer)
 									response_json['News'].append(current_result)
 
-							
-
-
 						else:
-							print(url)
 							response = requests.get(url)
-							"""content = extractor.get_content(response.text)
-							content_array = content.split('\n')
-							content_len = len(content_array)
-							ratio = (5 * 100)/ content_len 
-							summary = summarize(content, ratio = ratio/100)"""
-							parser = HtmlParser.from_url(url, Tokenizer(LANGUAGE))
 							stemmer = Stemmer(language=LANGUAGE)
 							summarizer = Summarizer(stemmer)
 							summarizer.stop_words = get_stop_words(LANGUAGE)
@@ -277,115 +372,13 @@ class SearchView(APIView):
 				db_json['News'] = [[json] for json in db_json['News']]
 				db_json['_id'] = query
 				db["news"].insert_one(db_json)
-
-
-			else:
-
-				#print("Stored Result",stored_result)
-				query_json= stored_result[0]
-				stored_sources = []
-				for news in query_json["News"]:
-					news_dict = news[-1]
-					url = news_dict["source"]
-					response = requests.get(news_dict["source"])
-					stored_sources.append(news_dict["source"])
-					if 'Last-Modified' in response.headers:
-						if time.strptime(response.headers['Last-Modified'],"%a, %d %b %Y %H:%M:%S %Z") > time.strptime(news_dict['last_modified'],"%a, %d %b %Y %H:%M:%S %Z"):
-							current_result = {}
-							content = extractor.get_content(response.text)
-							content_len = len(content.split('.'))
-							parser = HtmlParser.from_url(url, Tokenizer(LANGUAGE))
-							stemmer = Stemmer(language=LANGUAGE)
-							summarizer = Summarizer(stemmer)
-							summarizer.stop_words = get_stop_words(LANGUAGE)
-							summary = summarizer(parser.document, 5)
-							summary = '\n'.join([line._text for line in summary])
-							current_result['content'] = []
-							current_result['content'].append(summary)
-							current_result['source'] = news_dict["source"]
-							current_result['last_modified'] = response.headers['Last-Modified']
-							news.append(current_result)
-
-					"""else:
-						print(url)
-						stored_content = news_dict["content"]
-						parser = HtmlParser.from_url(url, Tokenizer(LANGUAGE))
-						stemmer = Stemmer(language=LANGUAGE)
-						summarizer = Summarizer(stemmer)
-						summarizer.stop_words = get_stop_words(LANGUAGE)
-						summary = summarizer(parser.document, 5)
-						summary = '\n'.join([line._text for line in summary])
-						if stored_content[0] != summary:
-							current_result = {}
-							current_result['content'] = []
-							current_result['content'].append(summary)
-							current_result['source'] = news_dict["source"]
-							current_result['last_modified'] = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime())
-							news.append(current_result)"""
-				
-				for item in result['items']:
-					try:
-						if item['link'] not in stored_sources:
-							url = item['link']
-							if 'pdf' in url:
-								continue
-							current_result = {}
-							current_result['source'] = url
-							current_result['content'] = []
-				
-							response = requests.get(url)
-							parser = HtmlParser.from_url(url, Tokenizer(LANGUAGE))
-							stemmer = Stemmer(language=LANGUAGE)
-							summarizer = Summarizer(stemmer)
-							summarizer.stop_words = get_stop_words(LANGUAGE)
-							summary = summarizer(parser.document, 5)
-							summary = '\n'.join([line._text for line in summary])						
-							current_result['content'].append(summary)
-							if 'Last-Modified' in response.headers:
-								current_result['last_modified'] = response.headers['Last-Modified']
-							else:
-								current_result['last_modified'] = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime())
-							query_json['News'].append([current_result])
-
+				update_faq(query)
+				response_json["similar_questions"] = related_questions(query)
+				return Response(response_json,stored_result)
 
 
 					
-					except urllib.error.HTTPError as e:
-						current_result['content'] = ["No results available"]
-						continue
-
-					except TypeError:
-						current_result['content'] = ["No results available"]
-						continue
-
-					except AttributeError:
-						current_result['content'] = ["No results available"]
-						continue
-
-					except requests.exceptions.SSLError as e:
-						current_result['content'] = ["No results available"]
-						continue
-
-
-					db["news"].save(query_json)
 					
-
-					response_json["News"] = []
-					for news in query_json["News"]:
-						latest_news = news[-1]
-						current_dict = {}
-						current_dict["source"] = latest_news["source"]
-						current_dict["content"] = latest_news["content"]
-						response_json["News"].append(current_dict)
-					
-
-
-
-		update_faq(query)
-		response_json["similar_questions"] = related_questions(query)
-		return Response(response_json)
-
-
 
 class StatisticsView(APIView):
 	def get(self,request):
