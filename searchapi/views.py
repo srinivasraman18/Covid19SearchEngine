@@ -309,7 +309,7 @@ class SearchView(APIView):
 			url = None
 			extractor = extractors.ArticleExtractor()
 			response_json['News'] = []
-			content = ''
+			content_summary = ''
 			if is_stored == False:
 				for item in result['items']:
 					try:
@@ -335,7 +335,7 @@ class SearchView(APIView):
 									#print(question,":",answer)
 									current_result['content'].append(answer)
 									response_json['News'].append(current_result)
-									content = content + answer
+									content_summary = content_summary + answer
 
 						else:
 							response = requests.get(url)
@@ -349,7 +349,7 @@ class SearchView(APIView):
 							current_result['source'] = url
 							current_result['content'] = []
 							current_result['content'].append(summary)
-							content = content + summary
+							content_summary = content_summary + summary
 							if 'Last-Modified' in response.headers:
 								current_result['last_modified'] = response.headers['Last-Modified']
 							else:
@@ -373,8 +373,7 @@ class SearchView(APIView):
 						current_result['content'] = ["No results available"]
 						continue
 
-
-				response_json['summary'] = get_summary(content)
+				response_json['summary'] = get_summary(content_summary)
 				db_json = {}
 				db_json['News'] = response_json['News']
 				db_json['summary'] = response_json['summary']
